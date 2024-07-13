@@ -1,112 +1,130 @@
-import {uploadLargeFileChunk, uploadSmallFile, createUploadSession, share} from './api';
-import {splitFileIntoChunks, parallel} from './utils';
-import {SMALL_SIZE, LARGE_SIZE, CHUNK_SIZE} from './constants';
+import {
+  uploadLargeFileChunk,
+  uploadSmallFile,
+  createUploadSession,
+  share,
+  deleteFile,
+} from "./api";
+import { splitFileIntoChunks, parallel } from "./utils";
+import { SMALL_SIZE, LARGE_SIZE, CHUNK_SIZE } from "./constants";
 
-export * from './helpers'
-export * from './api'
+export * from "./helpers";
+export * from "./api";
 
 type Options = {
-	accessToken: string
-}
+  accessToken: string;
+};
 export default class OneDriveApi {
-	private accessToken: string;
+  private accessToken: string;
 
-	constructor({accessToken}: Options) {
-		this.accessToken = accessToken;
-	}
+  constructor({ accessToken }: Options) {
+    this.accessToken = accessToken;
+  }
 
-	/**
-	 * Upload file smaller than 4MB
-	 * @param file
-	 * @param path
-	 * @returns
-	 */
-	private uploadSmallFile(file: File, path: string) {
-		return uploadSmallFile(file, path, this.accessToken);
-	}
+  /**
+   * Upload file smaller than 4MB
+   * @param file
+   * @param path
+   * @returns
+   */
+  private uploadSmallFile(file: File, path: string) {
+    return uploadSmallFile(file, path, this.accessToken);
+  }
 
-	/**
-	 * Generate upload url for files
-	 * larger than 4MB and smaller than 60MB
-	 * @param filePath
-	 * @returns
-	 */
-	private createUploadSession(filePath: string) {
-		return createUploadSession(filePath, this.accessToken);
-	}
+  /**
+   * Delete file
+   * @param fileId
+   * @returns
+   */
+  private deleteFile(fileId: string) {
+    return deleteFile(fileId, this.accessToken);
+  }
 
-	/**
-	 * Upload file chunks
-	 * @param file
-	 * @param url
-	 * @param range
-	 * @returns
-	 */
-	private uploadLargeFileChunk(
-		file: File | Blob,
-		url: string,
-		range: { start: number; end: number, total: number },
-	) {
-		return uploadLargeFileChunk(file, url, range);
-	}
+  /**
+   * Generate upload url for files
+   * larger than 4MB and smaller than 60MB
+   * @param filePath
+   * @returns
+   */
+  private createUploadSession(filePath: string) {
+    return createUploadSession(filePath, this.accessToken);
+  }
 
-	/**
-	 * Upload files larger than 4MB and smaller than 60MB
-	 * @param file 
-	 * @param filePath 
-	 * @returns 
-	 */
-	private async uploadLargeFile(file: File | Blob, filePath: string): Promise<{ id: string }> {
-		const {uploadUrl} = await this.createUploadSession(filePath);
-		const chunks = splitFileIntoChunks(file, CHUNK_SIZE);
-		let uploadedChunkSize = 0;
-		const tasks = chunks.map(chunk => {
-			const range = {
-				start: uploadedChunkSize,
-				end: uploadedChunkSize + chunk.size - 1,
-				total: file.size,
-			};
-			uploadedChunkSize = range.end + 1;
-			return () => this.uploadLargeFileChunk(chunk, uploadUrl, range);
-		});
-		return new Promise((resolve, reject) => {
-			parallel(tasks)
-				.then(res => {
-					if (res.length === tasks.length) {
-						const lastTask = res[res.length - 1];
-						if (lastTask && 'id' in lastTask) {
-							resolve(lastTask);
-						} else {
-							// TODO: Are there any useful error messages in the response?
-							throw new Error('Upload failed');
-						}
-					} else {
-						throw new Error('Some chunks were failed to upload');
-					}
-				})
-				.catch(reject);
-		});
-	}
+  /**
+   * Upload file chunks
+   * @param file
+   * @param url
+   * @param range
+   * @returns
+   */
+  private uploadLargeFileChunk(
+    file: File | Blob,
+    url: string,
+    range: { start: number; end: number; total: number }
+  ) {
+    return uploadLargeFileChunk(file, url, range);
+  }
 
-	/**
-	 * Upload file. Note that the file size should be smaller than 60MB
-	 * @param file
-	 * @param filePath
-	 * @returns
-	 */
-	public async upload(file: File, filePath: string) {
-		if (file.size < SMALL_SIZE) {
-			return this.uploadSmallFile(file, filePath);
-		}
+  /**
+   * Upload files larger than 4MB and smaller than 60MB
+   * @param file
+   * @param filePath
+   * @returns
+   */
+  private async uploadLargeFile(
+    file: File | Blob,
+    filePath: string
+  ): Promise<{ id: string }> {
+    const { uploadUrl } = await this.createUploadSession(filePath);
+    const chunks = splitFileIntoChunks(file, CHUNK_SIZE);
+    let uploadedChunkSize = 0;
+    const tasks = chunks.map((chunk) => {
+      const range = {
+        start: uploadedChunkSize,
+        end: uploadedChunkSize + chunk.size - 1,
+        total: file.size,
+      };
+      uploadedChunkSize = range.end + 1;
+      return () => this.uploadLargeFileChunk(chunk, uploadUrl, range);
+    });
+    return new Promise((resolve, reject) => {
+      parallel(tasks)
+        .then((res) => {
+          if (res.length === tasks.length) {
+            const lastTask = res[res.length - 1];
+            if (lastTask && "id" in lastTask) {
+              resolve(lastTask);
+            } else {
+              // TODO: Are there any useful error messages in the response?
+              throw new Error("Upload failed");
+            }
+          } else {
+            throw new Error("Some chunks were failed to upload");
+          }
+        })
+        .catch(reject);
+    });
+  }
 
-		if (file.size < LARGE_SIZE) {
-			return this.uploadLargeFile(file, filePath);
-		}
+  /**
+   * Upload file. Note that the file size should be smaller than 60MB
+   * @param file
+   * @param filePath
+   * @returns
+   */
+  public async upload(file: File, filePath: string) {
+    if (file.size < SMALL_SIZE) {
+      return this.uploadSmallFile(file, filePath);
+    }
 
-		throw new Error('File is too large.');
-	}
+    if (file.size < LARGE_SIZE) {
+      return this.uploadLargeFile(file, filePath);
+    }
 
-	public share(fileId: string) {
-		return share(fileId, this.accessToken);
-	}
+    throw new Error("File is too large.");
+  }
+
+  public share(fileId: string) {
+    return share(fileId, this.accessToken);
+  }
 }
