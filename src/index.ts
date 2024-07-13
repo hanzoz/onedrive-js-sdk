@@ -36,7 +36,7 @@ export default class OneDriveApi {
    * @param fileId
    * @returns
    */
-  private deleteFile(fileId: string) {
+  public deleteFile(fileId: string) {
     return deleteFile(fileId, this.accessToken);
   }
 
