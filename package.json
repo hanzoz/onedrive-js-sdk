@@ -1,5 +1,5 @@
 {
-  "name": "@harrisoff/onedrive-js-sdk",
+  "name": "@hanzoz/onedrive-js-sdk",
   "version": "1.1.0",
   "description": "Js SDK for OneDrive",
   "type": "module",
